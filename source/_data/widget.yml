@@ -1,0 +1,6 @@
+bottom:
+  - class_name: user-map
+    id_name: user-map
+    icon: fas fa-heartbeat
+    order:
+    html: '<script type="text/javascript" src="//rf.revolvermaps.com/0/0/6.js?i=5jgqn5irccl&amp;m=7&amp;c=ff0000&amp;cr1=ffffff&amp;f=georgia&amp;l=0&amp;bv=50" async="async"></script>'
