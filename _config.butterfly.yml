@@ -78,14 +78,14 @@ favicon: /img/favicon.png
 
 # Avatar (頭像)
 avatar:
-  img: https://i.loli.net/2021/02/24/5O1day2nriDzjSu.png
+  img: /img/head.jpg
   effect: false
 
 # Disable all banner image
 disable_top_img: false
 
 # The banner image of home page
-index_img:
+index_img: 'linear-gradient(20deg, #0062be, #925696, #cc426e, #fb0347)'
 
 # If the banner of page not setting, it will show the top_img
 default_top_img:
@@ -101,6 +101,9 @@ tag_img:
 # format:
 #  - tag name: xxxxx
 tag_per_img:
+# redis: /img/redis/redis_tag.jpg
+# 微服务: /img/Microservices_tag.jpg
+# go进阶: /img/golang_tag.jpg
 
 # If the banner of category page not setting, it will show the top_img
 # note: category page, not categories page (子分類頁面的 top_img)
@@ -395,7 +398,7 @@ crisp:
 footer:
   owner:
     enable: true
-    since: 2020
+    since: 2022
   custom_text:
   copyright: true # Copyright of theme and framework
 
@@ -486,10 +489,11 @@ tag_ui: # 留空或 index
 # Website Background (設置網站背景)
 # can set it to color or image (可設置圖片 或者 顔色)
 # The formal of image: url(http://xxxxxx.com/xxx.jpg)
+#background: url(/img/bg2.jpg)
 background:
 
 # Footer Background
-footer_bg: false
+footer_bg: true
 
 # the position of bottom right button/default unit: px (右下角按鈕距離底部的距離/默認單位為px)
 rightside-bottom:
@@ -512,7 +516,7 @@ canvas_ribbon:
 
 # Fluttering Ribbon (動態彩帶)
 canvas_fluttering_ribbon:
-  enable: false
+  enable: true
   mobile: false
 
 # canvas_nest
@@ -528,7 +532,7 @@ canvas_nest:
 # Typewriter Effect (打字效果)
 # https://github.com/disjukr/activate-power-mode
 activate_power_mode:
-  enable: false
+  enable: true
   colorful: true # open particle animation (冒光特效)
   shake: true #  open shake (抖動特效)
   mobile: false
@@ -546,11 +550,20 @@ click_heart:
 
 # Mouse click effects: words (鼠標點擊效果: 文字)
 ClickShowText:
-  enable: false
+  enable: true
   text:
-  # - I
-  # - LOVE
-  # - YOU
+   - 富强
+   - 民主
+   - 文明
+   - 和谐
+   - 自由
+   - 平等
+   - 公正
+   - 法治
+   - 爱国
+   - 敬业
+   - 诚信
+   - 友善
   fontSize: 15px
   random: false
   mobile: false
@@ -687,7 +700,7 @@ newest_comments:
 
 # Conversion between Traditional and Simplified Chinese (簡繁轉換)
 translate:
-  enable: false
+  enable: true
   # The text of a button
   default: 繁
   # the language of website (1 - Traditional Chinese/ 2 - Simplified Chinese）
@@ -739,7 +752,7 @@ fancybox: true
 # mermaid
 # see https://github.com/mermaid-js/mermaid
 mermaid:
-  enable: false
+  enable: true
   # built-in themes: default/forest/dark/neutral
   theme:
     light: default
@@ -833,7 +846,7 @@ inject:
   bottom:
    - <script async src="//at.alicdn.com/t/font_2264842_3izu8i5eoc2.js"></script>
    - <script defer src="/live2d-widget/autoload.js"></script>
-   - <div class="aplayer no-destroy" data-id="5183531430" data-server="netease" data-type="playlist" data-fixed="true" data-mini="true" data-listFolded="false" data-order="random" data-preload="none" data-autoplay="false" muted></div>
+   - <div class="aplayer no-destroy" data-id="1817222116" data-server="tencent" data-type="playlist" data-fixed="true" data-mini="true" data-listFolded="false" data-order="random" data-preload="none" data-autoplay="false" muted></div>
 # CDN
 # Don't modify the following settings unless you know how they work
 # 非必要請不要修改
