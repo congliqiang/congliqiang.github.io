@@ -58,3 +58,104 @@ parallel-syncs 就是用来限制在一次故障转移之后，每次向新的�
  表示故障转移的时间。
  ### Sentinel命令
  #### sentinel支持的合法命令如下：
+1. Sentinel masters显示被监控的所有master以及它们的状态。
+2. Sentinel master <master name> 显示指定master的信息和状态
+3. Sentinel slaves <master name> 显示指定master的所有slave以及它们的状态。
+4. Sentinel get-master-addr-by-name <master name> 返回指定master的ip和端口，如果正在进行failover或者failover已经完成，将会显示被提升为master的slave的ip和端口。
+5. SENTINEL failover <master name> 强制sentinel执行failover，并且不需要得到其他sentinel的同意。 但是failover后会将最新的配置发送给其他sentinel。 
+6. sentinel monitor test 127.0.0.1 6379 2 添加新的监听
+7. SENTINEL REMOVE test 放弃对某个master监听
+8. SENTINEL set failover-timeout mymaster 180000 设置配置选项
+### 应用端调用
+Master可能会因为某些情况宕机了，如果客户端固定一个地址去访问，肯定是不合理的，所以客户端请求是请求哨兵，从哨兵获取主机地址的信息，或者从机的信息。
+1. 随机选择一个哨兵连接，获取主机、从机信息
+2. 模拟客户端定时访问，实现简单轮询，轮询从节点
+3. 连接失败重试
+## Sentinel实现原理
+1. 检测问题：三个定时任务，这三个内部的执行任务可以确保出现问题马上让sentinel知道。
+2. 发现问题：主观下线和客观下线。当有一台Sentinel机器发现问题时，它就会主观对它下线。但是当多个Sentinel都发现问题的时候，才会出现客观下线。
+3. 找到解决问题的人：领导者选举，如何在Sentinel内部多台节点做领导者选举，选出一个领导者。
+4. 解决问题：故障转移，即如何进行故障转移。
+### 三个定时任务
+* 每10秒每个Sentinel对Master和Slave执行一次Info Replication。
+* 每2秒每个Sentinel通过Master节点的channel交换信息（pub/sub）。
+* 每1秒每个Sentinel对其他Sentinel和Redis执行ping。
+第一个定时任务，指的是Redis Sentinel可以对Redis节点做失败判断和故障转移，
+第二个定时任务，类似于发布订阅，Sentinel会对主从关系进行判定，通过Sentinel:hello频道交互。判定主从关系是为了更好地自动化操作Redis。然后Sentinel
+会对告知系统消息给其它Sentinel节点，最终达成共识，同时Sentinel节点能够互相感知到对方。
+第三个定时任务，是对每个节点和其他Sentinel进行心跳检测，它是失败判断的依据。
+### 主观下线和客观下线
+我们先来回顾一下 Sentinel 的配置。
+`sentinel monitor mymaster 127.0.0.1 6379 2`
+`sentinel down-after-milliseconds mymaster 30000`
+### 那么什么是主观下线呢？
+每个 Sentinel 节点对 Redis 节点失败的“偏见”。之所以是偏见，只是因为某一台机器30秒内没有得到回复。
+### 那么如何做到客观下线呢？
+这个时候需要所有 Sentinel 节点都发现它30秒内无回复，才会达到共识。
+### 领导者选举方式
+* 每个做主观下线的sentinel节点，会向其他的sentinel节点发送命令，要求将它设置成为领导者
+* 收到命令sentinel节点，如果没有同意通过其它节点发送的命令，那么就会同意请求，否则就会拒绝
+* 如果sentinel节点发现自己票数超过半数，同时也超过了 `sentinel monitor mymaster 127.0.0.1 6379 2` 超过2个的时候，就会成为领导者
+* 进行故障转移操作
+### 如何选择“合适的”Slave 节点
+Redis 内部其实是有一个优先级配置的，在配置文件中 `slave-priority`，这个参数是 Salve 节点的优先级配置，如果存在则返回，如果不存在则继续。
+当上面这个优先级不满足的时候， Redis 还会选择复制偏移量最大的 Slave节点，如果存在则返回，如果不存在则继续。之所以选择偏移量最大，这是因为偏移
+量越小，和 Master 的数据越不接近，现在 Master 挂掉了，说明这个偏移量小的机器数据也可能存在问题，这就是为什么要选偏移量最大的 Slave 的原因。
+如果发现偏移量都一样，这个时候 Redis 会默认选择 runid 最小的节点。
+### 生产环境中部署技巧
+1. Sentinel 节点不应该部署在一台物理“机器”上。
+   这里特意强调物理机是因为一台物理机做成了若干虚拟机或者现今比较流行的容器，它们虽然有不同的 `IP` 地址，但实际上它们都是同一台物理机，
+同一台物理机意味着如果这台机器有什么硬件故障，所有的虚拟机都会受到影响，为了实现 `Sentinel` 节点集合真正的高可用，请勿将`Sentinel`节点部署在
+同一台物理机器上。
+2. 部署至少三个且奇数个的 Sentinel 节点。
+3. 通过增加 Sentinel 节点的个数提高对于故障判定的准确性，因为领导者选举需要至少一半加1个节点。 奇数个节点可以在满足该条件的基础上节省一个节点。
+### 哨兵常见问题
+哨兵集群在发现 master node 挂掉后会进行故障转移，也就是启动其中一个 slave node 为 master node 。在这过程中，可能会导致数据丢失的情况。
+1. 异步复制导致数据丢失
+   因为master->slave的复制是异步，所以可能有部分还没来得及复制到slave就宕机了，此时这些部分数据就丢失了。
+2. 集群脑裂导致数据丢失
+   脑裂，也就是说，某个master所在机器突然脱离了正常的网络，跟其它slave机器不能连接，但是实际上master还运行着。
+   造成的问题：
+   * 此时哨兵可能就会认为master宕机了，然后开始选举，将其它 slave 切换成 master 。这时候集群里就会有2个 master ，也就是所谓的脑裂。 
+此时虽然某个 slave 被切换成了 master ，但是可能client还没来得及切换成新的 master ，还继续写向旧的 master 的数据可能就丢失了。 因此旧
+master再次恢复的时候，会被作为一个 slave 挂到新的 master 上去，自己的数据会被清空，重新从新的 master 复制数据。 怎么解决？
+     `min-slaves-to-write 1`
+     `min-slaves-max-lag 10`
+     要求至少有1个slave，数据复制和同步的延迟不能超过10秒 如果说一旦所有slave，数据复制和同步的延迟都超过了10秒钟，那么这个时候，master就
+不会再接收任何请求了,上面两个配置可以减少异步复制和脑裂导致的数据丢失。
+#### 解决方法
+1、异步复制导致的数据丢失
+在异步复制的过程当中，通过 `min-slaves-max-lag` 这个配置，就可以确保的说，一旦 slave 复制数据和 ack 延迟时间太长，就认为可能 master 宕机
+后损失的数据太多了，那么就拒绝写请求，这样就可以把master宕机时由于部分数据未同步到 slave 导致的数据丢失降低到可控范围内
+2、集群脑裂导致的数据丢失
+集群脑裂因为 client 还没来得及切换成新的 master ，还继续写向旧的 master 的数据可能就丢失了通过 `min-slaves-to-write` 确保必须是有多少个从
+节点连接，并且延迟时间小于 `min-slaves-max-lag` 多少秒。
+当然对于客户端需要怎么做呢？
+对于 client 来讲，就需要做些处理，比如先将数据缓存到内存当中，然后过一段时间处理，或者连接失败，接收到错误切换新的 master 处理。
+### redis日志参数说明
+以下列出的是客户端可以通过订阅来获得的频道和信息的格式： 第一个英文单词是频道/事件的名字， 其余的是数据的格式。 注意，
+当格式中包含 instance details 字样时， 表示频道所返回的信息中包含了以下用于识别目标实例的内容：
+<instance-type> <name> <ip> <port> @ <master-name> <master-ip> <master-port>
+* @ 字符之后的内容用于指定主服务器， 这些内容是可选的， 它们仅在 @ 字符之前的内容指定的实例不是主服务器时使用。
+* +reset-master <instance details>：主服务器已被重置。
+* +slave <instance details>：一个新的从服务器已经被 Sentinel 识别并关联。
+* +failover-state-reconf-slaves <instance details>：故障转移状态切换到了 reconf-slaves 状态。
+* +failover-detected <instance details>：另一个 Sentinel 开始了一次故障转移操作，或者一个从服务器转换成了主服务器。
+* +slave-reconf-sent <instance details>：领头（leader）的 Sentinel 向实例发送了 SLAVEOF 命令，为实例设置新的主服务器。
+* +slave-reconf-inprog <instance details>：实例正在将自己设置为指定主服务器的从服务器，但相应的同步过程仍未完成。
+* +slave-reconf-done <instance details>：从服务器已经成功完成对新主服务器的同步。
+* +sentinel <instance details>：一个监视给定主服务器的新 Sentinel 已经被识别并添加。
+* +sdown <instance details>：给定的实例现在处于主观下线状态。
+* -sdown <instance details>：给定的实例已经不再处于主观下线状态。
+* +odown <instance details>：给定的实例现在处于客观下线状态。
+* -odown <instance details>：给定的实例已经不再处于客观下线状态。
+* +new-epoch <instance details>：当前的纪元（epoch）已经被更新。
+* +try-failover <instance details>：一个新的故障迁移操作正在执行中，等待被大多数 Sentinel 选中（waiting to be elected by the majority）。
+* +elected-leader <instance details>：赢得指定纪元的选举，可以进行故障迁移操作了。
+* +failover-state-select-slave <instance details>：故障转移操作现在处于 select-slave 状态 —— Sentinel 正在寻找可以升级为主服务器的从 服务器。
+* no-good-slave <instance details>：Sentinel 操作未能找到适合进行升级的从服务器。Sentinel 会在一段时间之后再次尝试寻找合适的从服务器 来进行升级，又或者直接放弃执行故障转移操作。
+* selected-slave <instance details>：Sentinel 顺利找到适合进行升级的从服务器。
+* failover-state-send-slaveof-noone <instance details>：Sentinel 正在将指定的从服务器升级为主服务器，等待升级功能完成。
+* failover-end-for-timeout <instance details>：故障转移因为超时而中止，不过最终所有从服务器都会开始复制新的主服务器（slaves will eventually be configured to replicate with the new master anyway）。
+* failover-end <instance details>：故障转移操作顺利完成。所有从服务器都开始复制新的主服务器了。
+* +switch-master <master name> <oldip> <oldport> <newip> <newport>：配置变更，主服务器的 IP 和地址已经改变。 这是绝大多数外部用户都关 心的信息。
